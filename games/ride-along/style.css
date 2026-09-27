@@ -1,0 +1,137 @@
+/* 差し色は公式 X（@RareFriendsNFT）のライムに寄せた #cdef3c（2026-09-25。前は黄土色 #e0b552） */
+/* ドット（ピクセル）フォント: Silkscreen（SIL Open Font License 1.1・assets/silkscreen-OFL.txt）。2026-09-25 builder
+   「絶対に読みやすさが要るもの以外はドットでいい」→ 見出し・数字・HUD・ボタンに使う。説明文（ヒント・設定）は等幅のまま。
+   8px の倍数（16 / 24 / 40…）で使うとドットが潰れない */
+@font-face{font-family:Silkscreen;src:url("./assets/silkscreen-regular.woff2") format("woff2");font-weight:400;font-display:block}
+@font-face{font-family:Silkscreen;src:url("./assets/silkscreen-bold.woff2") format("woff2");font-weight:700;font-display:block}
+.ride-game{position:relative;width:100%;height:100%;overflow:hidden;background:#9fb7c4;color:#22303a;font:14px/1.45 ui-monospace,monospace}
+.ride-game *{box-sizing:border-box}
+.ride-world{position:absolute;inset:0}
+.ride-world canvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none;outline-offset:-3px}
+.ride-world canvas:focus-visible{outline:3px solid #2c5668}
+/* 見た目は公式（07_tmp/official③）に寄せる: 不透明の四角い箱・太い枠・右下にずらした硬い影（2026-09-24） */
+.ride-game button{font:inherit;border:2px solid #22303a;background:#f4f1e4;color:#22303a;padding:10px 14px;cursor:pointer;border-radius:0;box-shadow:3px 3px 0 #22303a}
+.ride-game button:hover{background:#fffdf2}
+.ride-game button:disabled{opacity:.6;cursor:default}
+.ride-game button:not(.ride-pad):active{transform:translate(2px,2px);box-shadow:1px 1px 0 #22303a}
+.ride-game button:focus-visible{outline:3px solid #2c5668;outline-offset:2px}
+
+.ride-hud{position:absolute;left:20px;right:20px;top:18px;display:flex;align-items:center;gap:10px;pointer-events:none}
+.ride-hud span{font:400 16px/1.5 Silkscreen,ui-monospace,monospace;background:#f4f1e4;padding:6px 12px;border:2px solid #22303a;box-shadow:3px 3px 0 #22303a;white-space:nowrap}
+.ride-hud strong{font:700 24px/1 Silkscreen,ui-monospace,monospace}
+.ride-hud .ride-section{margin-right:auto;border-left-width:5px}
+.ride-hud .ride-section{margin-right:0}
+.ride-hud .ride-split{margin-right:auto;background:#22303a;color:#f4f1e4}
+.ride-hud .ride-split[data-ahead]{background:#cdef3c;color:#22303a}
+.ride-hud .ride-section:last-of-type{margin-right:auto}
+.ride-hud button{pointer-events:auto}
+.ride-hud .ride-gear{display:flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0}
+
+.ride-stamina{position:absolute;left:20px;top:60px;width:180px;height:10px;background:#f4f1e4;border:2px solid #22303a;box-shadow:3px 3px 0 #22303a;overflow:hidden}
+.ride-stamina i{display:block;height:100%;background:#cdef3c}
+/* スタミナ切れ（残り STAMINA_LOW 未満）: 赤と白でコマ送りに点滅。reduced-motion では赤いまま */
+.ride-stamina.is-empty{animation:ride-stamina-empty .5s steps(1,end) infinite}
+.ride-stamina.is-empty.is-still{animation:none;background:#d26a5c}
+@keyframes ride-stamina-empty{0%{background:#d26a5c}50%{background:#f4f1e4}}
+
+/* 下 60px は runtime toolbar のために空ける（ウォレット＝左下・メニュー＝右下） */
+.ride-pedals,.ride-steer{position:absolute;bottom:68px;display:flex;gap:14px;pointer-events:none}
+.ride-pedals{left:20px}
+.ride-steer{right:20px;bottom:126px} /* ブレーキの上（2026-09-24。ブレーキを矢印の下へ移した） */
+.ride-pad{pointer-events:auto;width:84px;height:84px;font:700 24px/1 Silkscreen,ui-monospace,monospace;
+  background:#f4f1e4;touch-action:none;user-select:none;-webkit-user-select:none}
+.ride-pad:active{background:#cdef3c}
+/* ペダル: --push（0..1 = 踏み込みの進み）で小さく。踏み切ったら反対側に is-next（踏み替えどき＝光る）。2026-09-23 追加
+   色は変えない（2026-09-23 builder「どっち押すか分かんなくなる」で濃くなる色と is-full の濃い茶を外した）。
+   :active の単色も使わない（押した側が色で目立つと同じ理由で紛らわしい） */
+.ride-pedal,.ride-pedal:active{background:#f4f1e4;transform:scale(calc(1 - var(--push,0)*.12));color:#1d2a30}
+.ride-pedal.is-next{box-shadow:3px 3px 0 #22303a,0 0 0 4px #cdef3c,0 0 14px 4px #e8ff8f}
+/* ブレーキは矢印（◀/▶）の真下。右手の親指が矢印から下へ転がる位置（2026-09-24 に上から下へ）。 */
+.ride-brake{position:absolute;right:20px;bottom:68px;display:flex;pointer-events:none} /* 矢印の下（2026-09-24 builder。前は矢印の上 166px） */
+.ride-lever{width:182px;height:44px;font-size:16px;letter-spacing:.14em}
+
+.ride-status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
+  text-align:center;gap:14px;padding:24px;background:#9fb7c4}
+.ride-game .rf-frame-menu{background:#f4f1e4}
+.ride-game .rf-frame-scrim{background:#22303a66;padding-bottom:60px}
+.ride-game .rf-frame-menu-heading{border-color:#a9bcc4}
+.ride-game label{display:block;margin-bottom:18px}
+.ride-game kbd{background:#e6e2d2;border:1px solid #22303a;padding:0 4px}
+
+/* スタートのタイトル（最初の1踏みまで・2026-09-25 試作） */
+.ride-title{position:absolute;left:50%;top:78px;transform:translateX(-50%);text-align:left;pointer-events:none;display:flex;align-items:center;gap:14px;
+  background:#f4f1e4;border:2px solid #22303a;box-shadow:4px 4px 0 #22303a;padding:10px 22px 8px}
+.ride-portrait{display:block;flex:none}
+.ride-title h1{margin:0;font:700 40px/1 Silkscreen,ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}
+.ride-title p{margin:6px 0 0;font:400 16px/1 Silkscreen,ui-monospace,monospace}
+.ride-title .ride-type{display:inline-block;margin-top:6px;padding:1px 6px;background:#cdef3c;border:2px solid #22303a}
+.ride-hint.is-under-title{top:190px}
+.ride-hud .ride-mute{margin-right:0}
+/* スタート直後の操作ヒント（HINT_UNTIL m まで） */
+.ride-hint{position:absolute;left:50%;top:84px;transform:translateX(-50%);margin:0;white-space:nowrap;pointer-events:none;
+  background:#f4f1e4;border:2px solid #22303a;box-shadow:3px 3px 0 #22303a;padding:6px 12px}
+/* ゴールを通過した瞬間の「GOAL」（2026-09-26）。コマ送りでポンと大きくなる。reduced-motion では動かさない */
+.ride-goal-pop{position:absolute;left:0;right:0;top:120px;margin:0;text-align:center;pointer-events:none;
+  font:700 72px/1 Silkscreen,ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:#cdef3c;
+  text-shadow:4px 0 0 #22303a,-4px 0 0 #22303a,0 4px 0 #22303a,0 -4px 0 #22303a,4px 4px 0 #22303a,8px 8px 0 #22303a;
+  animation:ride-goal-pop .36s steps(3,end) .35s both} /* コインが飛び去ってから（0.35 秒後）出す */
+/* 2026-09-27 スローの間に Friend へ寄るようにしたので、跳ねた Friend の頭に重ならないよう上へ（120 → 72px）。寄らない reduced-motion は元の位置 */
+.ride-goal-pop:not(.is-still){top:72px}
+.ride-goal-pop.is-still{animation:none}
+@keyframes ride-goal-pop{0%{opacity:0;transform:scale(.3)}1%{opacity:1;transform:scale(.3)}70%{transform:scale(1.15)}100%{opacity:1;transform:scale(1)}}
+/* ゴール後の Friend のアップの名札（2026-09-27）。画面の下、ツールバーの上 */
+.ride-nameplate{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);text-align:center;pointer-events:none;
+  background:#f4f1e4;border:2px solid #22303a;box-shadow:4px 4px 0 #22303a;padding:8px 18px 10px;white-space:nowrap}
+.ride-nameplate strong{display:block;font:700 40px/1 Silkscreen,ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}
+.ride-nameplate span{display:block;margin-top:6px;font:400 16px/1 Silkscreen,ui-monospace,monospace;text-transform:uppercase}
+/* 頂上の結果（2026-09-25 参考画像 07_tmp/参考_ほかのゲーム.png の並び: 見出し → 大きな数字 → 区切り線の3列 → 大きなボタン）。
+   跳ねる Friend（画面の上から約 370px）にかからない高さに収める */
+.ride-result{position:absolute;left:50%;top:76px;transform:translateX(-50%);width:460px;text-align:center;
+  background:#f4f1e4;border:2px solid #22303a;box-shadow:4px 4px 0 #22303a;padding:10px 18px 12px}
+.ride-result-head{display:flex;align-items:center;justify-content:center;gap:10px}
+.ride-result h2{margin:0;font:700 24px/1 Silkscreen,ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+.ride-result .ride-best{padding:1px 8px;background:#cdef3c;border:2px solid #22303a;font:400 16px/1.2 Silkscreen,ui-monospace,monospace;text-transform:uppercase}
+.ride-result-time{display:flex;align-items:center;justify-content:center;gap:12px;margin:6px 0 0}
+.ride-result-time strong{font:700 40px/1 Silkscreen,ui-monospace,monospace}
+.ride-result-time span{font:400 16px/1 Silkscreen,ui-monospace,monospace;text-transform:uppercase}
+.ride-rank-icon{display:block}
+.ride-next{margin:4px 0 8px;opacity:.75}
+.ride-result dl{display:grid;grid-template-columns:repeat(3,1fr);margin:0;border-top:2px solid #22303a;border-bottom:2px solid #22303a}
+.ride-result dl div{padding:6px 4px}
+.ride-result dl div + div{border-left:2px solid #22303a}
+.ride-result dt{font-size:12px;opacity:.7;text-transform:uppercase}
+.ride-result dd{margin:0;font:700 16px/1.3 Silkscreen,ui-monospace,monospace}
+.ride-builder{margin:6px 0 8px;font-size:12px;opacity:.75}
+.ride-result-actions{display:flex;gap:10px;justify-content:center}
+.ride-result-actions button{font:400 16px/1 Silkscreen,ui-monospace,monospace;text-transform:uppercase;padding:10px 14px}
+.ride-game .ride-primary{background:#cdef3c;flex:1}
+.ride-game .ride-primary:hover{background:#dff77a}
+.ride-copied{margin:8px 0 0;font-size:12px}
+.ride-share{display:block;width:100%;height:54px;margin:8px 0 0;font:12px/1.4 ui-monospace,monospace;border:2px solid #22303a;background:#fff;resize:none}
+
+@media(max-width:600px){
+  .ride-game{font-size:11px}
+  .ride-hud{top:10px;left:10px;right:10px;gap:6px}
+  .ride-hud span{padding:4px 8px;box-shadow:2px 2px 0 #22303a}
+  .ride-hud strong{font-size:15px}
+  .ride-stamina{top:42px;left:10px;width:120px;height:8px;box-shadow:2px 2px 0 #22303a}
+  .ride-hint{top:62px;white-space:normal;width:calc(100% - 20px);text-align:center}
+  .ride-result{top:52px;width:calc(100% - 20px);padding:6px 10px 8px}
+  .ride-result h2{font-size:16px}
+  .ride-result-time strong{font-size:24px}
+  .ride-result-time .ride-rank-icon{width:24px;height:24px}
+  .ride-result dl div{padding:2px}
+  .ride-next,.ride-builder{margin:2px 0}
+  .ride-hud span{font-size:8px}
+  .ride-hud strong{font-size:16px}
+  .ride-pad{font-size:16px}
+  .ride-game button{padding:8px}
+  .ride-pedals,.ride-steer{bottom:56px;gap:10px}
+  .ride-pedals{left:10px}
+  .ride-steer{right:10px;bottom:102px}
+  .ride-pad{width:66px;height:66px;font-size:16px}
+  .ride-brake{right:10px;bottom:56px}
+  .ride-lever{width:142px;height:36px;font-size:11px}
+  .ride-game .rf-frame-menu-heading h2{font-size:14px}
+}
+.ride-game .rf-frame-menu button + button{margin-left:8px}

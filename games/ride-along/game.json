@@ -1,0 +1,8 @@
+{
+  "name": "Ride Along",
+  "consumable": "Token",
+  "price": "1000000000000000000",
+  "outcomes": [
+    { "name": "Unused", "chanceBps": 10000, "reward": "1000000000000000000" }
+  ]
+}
