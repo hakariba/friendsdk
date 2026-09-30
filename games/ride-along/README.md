@@ -146,7 +146,7 @@ your Friend hops for joy and a little wooden knock when you fall. Instead of bac
 your Friend hums: once you are riding smoothly above about 12 km/h it now and then hums a
 short phrase, with long pauses in between (small white notes rise beside its head while it does), a livelier,
 higher tune above 30 km/h, and a slow, broken hum on the steep final climb. It falls silent
-when you stop, slow right down, run out of stamina, are about to fall or fall, and each
+after the finish and when you stop, slow right down, run out of stamina, are about to fall or fall, and each
 Friend's voice is pitched slightly differently. All are synthesized in
 the browser with Web Audio; there are no recordings or third-party audio assets.
 Audio starts only after your first key press or tap. The speaker button at

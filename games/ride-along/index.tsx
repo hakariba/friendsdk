@@ -844,7 +844,7 @@ const HEART_LEN = 0.9;        // s
 
 // 鼻歌（2026-09-28 builder「BGM を Friend の鼻歌にする」。音は audio.ts）: 気分をここで決めて毎フレーム渡す。
 // 歌うのは HUM_FROM_V 以上で走っているとき（歌っている最中は HUM_KEEP_V まで下がっても続ける）と、急な登り（ゆっくり低く・途切れ途切れ）。
-// 30km/h（EXCITED_V）以上は速い歌。止まっている・「!」・転倒・スタミナ切れ・メニューでは黙る。ゴールのあと転がっている間は歌う
+// 30km/h（EXCITED_V）以上は速い歌。止まっている・「!」・転倒・スタミナ切れ・メニュー・ゴールのあとは黙る（ゴールは 2026-09-30 builder「ゴールした後は鼻歌なくそう」。前は転がっている間も歌っていた）
 const HUM_FROM_V = 12 / 3.6;  // m/s
 const HUM_KEEP_V = 8 / 3.6;   // m/s
 const HUM_VOICE_SPREAD = 0.05; // 声の高さの個体差（±）
@@ -852,9 +852,9 @@ const HUM_VOICE_SPREAD = 0.05; // 声の高さの個体差（±）
 const HUM_NOTE_ON = true;
 const HUM_NOTE_EVERY = 1.3;   // s
 function humMood(ride: Ride, blocked: boolean): HumMood {
-  if (blocked || ride.falling > 0 || ride.footDown || ride.stamina < STAMINA_LOW) return "rest";
-  if (!ride.finished && ride.danger > DANGER_FROM) return "rest";
-  if (!ride.finished && gradeAt(ride.s) >= PUSH_SWEAT_GRADE && ride.v > 1) return "climb";
+  if (blocked || ride.finished || ride.falling > 0 || ride.footDown || ride.stamina < STAMINA_LOW) return "rest";
+  if (ride.danger > DANGER_FROM) return "rest";
+  if (gradeAt(ride.s) >= PUSH_SWEAT_GRADE && ride.v > 1) return "climb";
   if (ride.v < (ride.humOn ? HUM_KEEP_V : HUM_FROM_V)) return "rest";
   return ride.v >= EXCITED_V ? "fast" : "walk";
 }
