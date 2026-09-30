@@ -15,10 +15,10 @@ path and hops into the basket; the first stroke skips this. After a few seconds 
 20 km/h, the Friend turns to look down the road ahead for a while (and keeps looking even
 if you slow down), then turns back to you. Each time you pass 32 km/h it turns to you and
 hops twice with a little note above its head, and it flaps about while you are that fast. It shows a "!" when you are close
-to falling (its eyes go wide), and is thrown out of the basket when you fall, climbing back in when you restart.
+to falling, and is thrown out (wide-eyed) of the basket when you fall, climbing back in when you restart.
 It blinks now and then, shows a "?" when you stop and it looks around, and a heart when you
 ring the bell while stopped or when it cheers at the finish. After a fall into the water it
-shakes itself dry, and from the third fall on it wears a helmet. Balance-type Friends lean
+shakes itself dry, and from the third fall on it wears a small white cross-shaped plaster on its head. Balance-type Friends lean
 against the bicycle's lean to help; Power-type Friends brace themselves on climbs (and sweat on
 the steep one). From your second ride, each new section shows
 how far ahead (green) or behind you are against your best ride this session.
@@ -113,8 +113,8 @@ edge you are before the fall happens.
 The selected Friend is drawn from the canonical SDK sprite reader at integer scale with
 the usual clipped white halo. The artwork itself is unchanged except for two small touches:
 the eyes (the small enclosed holes nearest the top of the sprite) close for a blink or grow
-by one pixel when the Friend is startled, and a helmet is drawn over the top of the head after
-three falls. Friends whose sprite has no such holes (Hollow) keep their eyes as drawn. It mostly uses the `down` frame so it faces the
+by one pixel while the Friend is thrown out, and a small white cross-shaped plaster is drawn at
+the top corner of its head after three falls. Friends whose sprite has no such holes (Hollow) keep their eyes as drawn. It mostly uses the `down` frame so it faces the
 rider, and the side and `up` frames when it turns to look around or down the road.
 Friends without `up`/`down` frames fall back to the SDK's side-facing frames.
 
@@ -143,8 +143,8 @@ control pads move up and shrink at phone sizes.
 There are five sounds: the brake hiss, the bicycle bell (when you push off and when you
 cross the finish line), a short high beep when you are about to fall, a softer blip when
 your Friend hops for joy and a little wooden knock when you fall. Instead of background music,
-your Friend hums: once you are riding smoothly above about 12 km/h it hums short phrases
-with pauses in between (small white notes rise beside its head while it does), a livelier,
+your Friend hums: once you are riding smoothly above about 12 km/h it now and then hums a
+short phrase, with long pauses in between (small white notes rise beside its head while it does), a livelier,
 higher tune above 30 km/h, and a slow, broken hum on the steep final climb. It falls silent
 when you stop, slow right down, run out of stamina, are about to fall or fall, and each
 Friend's voice is pitched slightly differently. All are synthesized in

@@ -900,11 +900,13 @@ const BLINK_ON = true;
 const BLINK_EVERY = 3.2;      // s  平均の間隔（実際は 1 回ごとに 0〜BLINK_JITTER 秒ずらす）
 const BLINK_JITTER = 2.0;     // s
 const BLINK_LEN = 0.12;       // s  閉じている時間
-const WIDE_EYES_ON = true;    // 驚いたら目が大きくなる（「!」が出ている間と、転んで飛び出している間）
-// 転んだ回数が HELMET_FALLS 回になったら、再開のときにヘルメットをかぶっている（Ride again で脱ぐ）
-const HELMET_ON = true;
-const HELMET_FALLS = 3;
-type FriendLook = { eyes?: "open" | "closed" | "wide"; helmet?: boolean };
+// 驚いたら目が大きくなる: 転んで飛び出している間だけ（2026-09-30 builder「倒れそうなときの目が大きくなる演出やめる」で「!」の間は外した）
+const WIDE_EYES_ON = true;
+// 転んだ回数が BANDAGE_FALLS 回になったら、再開のときに ばんそうこう（白い ×）を貼っている（Ride again ではがす）。
+// 2026-09-30 builder「ヘルメット分かりづらいので ばんそうこう（白いばってん）とかどう？」→ ライムのヘルメット（頭にかぶせる帽子）から替えた
+const BANDAGE_ON = true;
+const BANDAGE_FALLS = 3;
+type FriendLook = { eyes?: "open" | "closed" | "wide"; bandage?: boolean };
 type EyeCells = readonly (readonly [number, number])[];
 const eyeCache = new WeakMap<readonly string[], EyeCells>();
 /** 原画の目のドット（[x, y]）。見つからなければ空 */
@@ -982,35 +984,26 @@ function paintFriend(ctx: CanvasRenderingContext2D, rows: readonly string[], lef
     ctx.fillStyle = "#fff";
     eyes.forEach(([x, y]) => ctx.fillRect(left + x * d - 1, top + y * d - 1, d + 2, d + 2));
   }
-  if (look.helmet) paintHelmet(ctx, rows, left, top);
+  if (look.bandage) paintBandage(ctx, rows, left, top);
 }
 
-/** ヘルメット（ライムの殻・濃紺の縁・白い光）。頭のてっぺん（4 ドット以上つながった最初の段）にかぶせ、目より上で止める。耳は上に出てよい */
-function paintHelmet(ctx: CanvasRenderingContext2D, rows: readonly string[], left: number, top: number) {
+/** ばんそうこう（白い ×・濃紺の縁）。頭のてっぺんの右の角に、はみ出して貼る（漫画のけがの位置）。
+ *  頭 = 4 ドット以上つながった最初の段の、いちばん長いつながり。縁があるので背景の上でも見え、黒い体の上では白だけが見える。
+ *  最初は体の中の黒い所に貼ったが、胴やお腹に付いて頭のけがに見えず、細い種族（Cellular・Hollow）は貼る所が無かった */
+function paintBandage(ctx: CanvasRenderingContext2D, rows: readonly string[], left: number, top: number) {
   const d = FRIEND_DOT;
   const head = rows.findIndex(row => /#{4,}/.test(row));
   if (head < 0) return;
-  const eyes = friendEyes(rows);
-  const eyeTop = eyes.length ? Math.min(...eyes.map(([, y]) => y)) : Infinity;
-  const bottom = Math.max(head, Math.min(head + 1, eyeTop - 1));
-  // 横の広がりは頭の段（head〜bottom）の中で一番長くつながった所
-  let from = 0, to = -1;
-  for (let y = head; y <= bottom; y++) {
-    for (const m of rows[y].matchAll(/#+/g)) {
-      if (m[0].length > to - from + 1) { from = m.index ?? 0; to = from + m[0].length - 1; }
-    }
-  }
-  const x0 = left + (from - 1) * d, x1 = left + (to + 2) * d; // 左右に 1 ドットはみ出す
-  const y0 = top + (head - 1) * d, y1 = top + (bottom + 1) * d;
-  // 殻（上の段は左右 1 ドットずつ内側＝丸く）。縁取りは上と横だけ外に出し、下の縁（つば）は y1 の手前 1px＝目の段にかからない
+  let to = -1, longest = 0;
+  for (const m of rows[head].matchAll(/#+/g)) if (m[0].length > longest) { longest = m[0].length; to = (m.index ?? 0) + longest - 1; }
+  // 6×5 の × を、頭の右の角が真ん中に来るよう、少し上へ（目にかからないように。最初の 8×7 は右目・右耳にかかった）
+  const x = left + (to + 1) * d - 3, y = top + head * d - 4;
+  const cells: [number, number][] = [];
+  for (let i = 0; i < 5; i++) cells.push([x + i, y + i], [x + i + 1, y + i], [x + 4 - i, y + i], [x + 5 - i, y + i]);
   ctx.fillStyle = "#22303a";
-  ctx.fillRect(x0 + d - 1, y0 - 1, x1 - x0 - 2 * d + 2, d + 1);
-  ctx.fillRect(x0 - 1, y0 + d - 1, x1 - x0 + 2, y1 - y0 - d + 1);
-  ctx.fillStyle = "#cdef3c";
-  ctx.fillRect(x0 + d, y0, x1 - x0 - 2 * d, d);
-  ctx.fillRect(x0, y0 + d, x1 - x0, y1 - y0 - d - 1);
+  cells.forEach(([cx, cy]) => ctx.fillRect(cx - 1, cy - 1, 3, 3));
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(x0 + d + 1, y0 + 1, Math.min(3, x1 - x0 - 2 * d - 2), 1);
+  cells.forEach(([cx, cy]) => ctx.fillRect(cx, cy, 1, 1));
 }
 
 /** カゴと、その中の Friend（rows が null なら空のカゴ＝飛び出している間）。friendDy は Friend だけ上下にずらす量 */
@@ -1691,12 +1684,12 @@ function paintScene(
     const fx = Math.round(VIEW.width + w / 2 + (basketX + INTRO_LAND_DX - VIEW.width - w / 2) * p);
     paintFriend(ctx, walk, fx - (w >> 1), INTRO_GROUND_Y - h);
   }
-  // 目（まばたき・見開く）とヘルメット。ヘルメットは HELMET_FALLS 回目に転んで、カゴに戻ったときから
+  // 目（まばたき・見開く）と ばんそうこう。ばんそうこうは BANDAGE_FALLS 回目に転んで、カゴに戻ったときから
   const blinkK = Math.floor(ride.time / BLINK_EVERY), blinkAt = blinkK * BLINK_EVERY + hash(blinkK * 7.3) * BLINK_JITTER;
   const blinking = BLINK_ON && ride.time >= blinkAt && ride.time < blinkAt + BLINK_LEN;
   const friendLook: FriendLook = {
-    eyes: stillFriend ? "open" : WIDE_EYES_ON && (warn || flight >= 0) ? "wide" : blinking ? "closed" : "open",
-    helmet: HELMET_ON && (ride.falls > HELMET_FALLS || (ride.falls === HELMET_FALLS && ride.falling <= 0)),
+    eyes: stillFriend ? "open" : WIDE_EYES_ON && flight >= 0 ? "wide" : blinking ? "closed" : "open",
+    bandage: BANDAGE_ON && (ride.falls > BANDAGE_FALLS || (ride.falls === BANDAGE_FALLS && ride.falling <= 0)),
   };
   paintRotatedCrisp(ctx, basketX, basketY, lean, layer =>
     paintBasketAndFriend(layer, flight >= 0 || walking ? null : rows, basketX, basketY, friendDy, friendDx, friendLook));

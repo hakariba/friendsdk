@@ -27,11 +27,11 @@ const FALL_KNOCKS = [[900, 480, 0, 0.07, 0.22], [640, 300, 0.13, 0.18, 0.2]] as 
 // 声: 三角波を低めのフィルタで丸め（ハミングらしく）、音と音はすべらせてつなぎ、伸ばす音だけビブラート
 export type HumMood = "rest" | "walk" | "fast" | "climb";
 const HUM_ON = true;
-const HUM_LEVEL = 0.05;
+const HUM_LEVEL = 0.045;      // （0.05 → 0.045・2026-09-30 builder「音量 9 割に」）
 const HUM_LOWPASS = 1100;      // Hz
 const HUM_BASE = 523.25;       // Hz（ド = C5。音階の 0）
 const HUM_WAIT = 1.2;          // s
-const HUM_GAP = 4;             // 拍（8 分音符の数）
+const HUM_GAP = 20;            // 拍（8 分音符の数）（4 → 20・2026-09-30 builder「鼻歌、頻度下げよう」。歌っている割合 約 75% → 約 40%）
 const HUM_GLIDE = 0.035;       // s  次の音へすべる時間
 const HUM_VIBRATO = [5.5, 0.008] as const; // [Hz, 深さ（周波数の割合）]
 // 気分ごとの [8 分音符の長さ s, 移調（半音）]
