@@ -6,7 +6,12 @@ export const GENERATION_ELIGIBILITY_ABI = parseAbi([
   "function generation(uint256 tokenId) view returns (uint8)",
 ]);
 export type GenerationIdentityClient = Pick<PublicClient, "readContract" | "getChainId" | "getBlockNumber">;
-export type GenerationDeployment = Readonly<{ chainId: number; generations: Address }>;
+export type GenerationDeployment = Readonly<{
+  chainId: number;
+  generations: Address;
+  /** First possible Transfer block. Omit only when the deployment block is unknown. */
+  transferStartBlock?: bigint;
+}>;
 
 /** Fresh ownership of a hardwired Generations NFT. Artwork and activation confer no permission. */
 export async function readGenerationEligibility(

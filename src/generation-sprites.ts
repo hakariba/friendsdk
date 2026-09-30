@@ -5,6 +5,8 @@ export const GENERATION_SPRITE_MANIFEST = Object.freeze({
   chainId: 4663,
   rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
   generations: "0x14C49e6118F46525dE9ab41a51cBAA3c6EBF181D" as Address,
+  /** First Transfer emitted by the canonical Generations collection. */
+  transferStartBlock: 63_102_373n,
   metadata: "0x3A243E7f46970275CaE8375b0032e53dF91a9110" as Address,
   registry: "0x246E3E9730A7Eade94c79be0Fd78d210f89AEb8D" as Address,
   worldData: "0xB78F68992d4c61c491EDCCa7890a05e7DBeb3970" as Address,
@@ -12,7 +14,7 @@ export const GENERATION_SPRITE_MANIFEST = Object.freeze({
 });
 
 export type GenerationSpriteManifest = Readonly<{
-  chainId: number; rpcUrl: string; generations: Address;
+  chainId: number; rpcUrl: string; generations: Address; transferStartBlock?: bigint;
   metadata: Address; registry: Address; worldData: Address; seededLandscape: Address;
 }>;
 export const FAMILIES_REGISTRY_ABI = parseAbi([

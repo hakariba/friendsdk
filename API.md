@@ -1,6 +1,6 @@
 # FriendSDK API
 
-SDK **v0.1.2** exports browser ESM and TypeScript declarations. Import modules from
+SDK **v0.1.4** exports browser ESM and TypeScript declarations. Import modules from
 `@rarefriends/friendsdk/<module>`. Build with Node.js 22+ using `npm ci` and
 `npm run build`.
 
@@ -232,8 +232,11 @@ It reads the account's balance at a fresh block and queries `Transfer` logs
 filtered by `to` and `from` account. It reconstructs currently held IDs and checks
 owner, generation and canonical wallet at the same block. It does not scan every
 token in the collection. Incomplete, inconsistent or unsupported RPC history is
-an error; selection results still require a fresh eligibility check before play.
-Options accept a deployment and abort signal.
+an error. The canonical deployment starts at its first `Transfer` block and
+paginates reads within the public RPC's ten-million-block limit. Custom
+deployments may supply `transferStartBlock`; omitting it starts at block zero.
+Selection results still require a fresh eligibility check before play. Options
+accept a deployment and abort signal.
 
 `createFriendWalletSession({ provider?, target? })` supports EIP-6963 discovery
 and injected EIP-1193 wallets. A supplied provider reuses existing wallet context.
@@ -420,7 +423,7 @@ and proposed recovery work.
 
 ## Unsupported actions
 
-SDK v0.1.2 has no trading, listing, bidding, swap, creator-fee/revenue-share, wearable
+SDK v0.1.4 has no trading, listing, bidding, swap, creator-fee/revenue-share, wearable
 NFT, upgrade, additional-currency or persistence APIs. Fixed-price vendor
 redemption is the sale model supplied by the chance-game client. These are
 implementation limits, not a ban on those ideas; document the custom integration

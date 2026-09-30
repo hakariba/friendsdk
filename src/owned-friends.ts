@@ -23,9 +23,11 @@ const validAddress = (value: unknown): value is Address => typeof value === "str
 const validId = (value: unknown): value is bigint => typeof value === "bigint" && value > 0n && value < 1n << 256n;
 const MAX_TRANSFER_LOGS = 100_000;
 const MAX_OWNED_FRIENDS = 10_000;
+/** The public Robinhood RPC accepts at most ten million inclusive blocks per log query. */
+const MAX_TRANSFER_BLOCKS_PER_QUERY = 10_000_000n;
 
 /**
- * Read-only discovery using two indexed, owner-filtered Transfer queries. The
+ * Read-only discovery using paginated indexed, owner-filtered Transfer queries. The
  * canonical Generations contract has no ERC721Enumerable owner enumeration.
  * Only currently held IDs are read; totalMinted and global token scans are never
  * used. Providers must support the filtered history query without truncation.
@@ -42,6 +44,10 @@ export async function readOwnedFriends(
   if (!validAddress(deployment.generations) || !Number.isSafeInteger(deployment.chainId) || deployment.chainId < 1) {
     throw new TypeError("Invalid Generations deployment.");
   }
+  const transferStartBlock = deployment.transferStartBlock ?? 0n;
+  if (typeof transferStartBlock !== "bigint" || transferStartBlock < 0n) {
+    throw new TypeError("Invalid Generations transfer start block.");
+  }
   const active = () => options.signal?.throwIfAborted();
   async function checkChain() {
     active();
@@ -51,6 +57,7 @@ export async function readOwnedFriends(
   await checkChain();
   const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
   active();
+  if (transferStartBlock > blockNumber) throw new Error("Generations transfer history starts after the discovery snapshot.");
   const balance = await client.readContract({ address: deployment.generations, abi: ABI,
     functionName: "balanceOf", args: [account], blockNumber });
   active();
@@ -62,14 +69,25 @@ export async function readOwnedFriends(
     return Object.freeze({ friends: Object.freeze([]), blockNumber, hiddenCount: 0 });
   }
 
-  const query = { address: deployment.generations, event: TRANSFER, fromBlock: 0n, toBlock: blockNumber, strict: true } as const;
-  const [received, sent] = await Promise.all([
-    client.getLogs({ ...query, args: { to: account } }),
-    client.getLogs({ ...query, args: { from: account } }),
-  ]).catch(cause => {
+  const pages = [];
+  try {
+    for (let fromBlock = transferStartBlock; fromBlock <= blockNumber; fromBlock += MAX_TRANSFER_BLOCKS_PER_QUERY) {
+      active();
+      const pageEnd = fromBlock + MAX_TRANSFER_BLOCKS_PER_QUERY - 1n;
+      const toBlock = pageEnd < blockNumber ? pageEnd : blockNumber;
+      const query = { address: deployment.generations, event: TRANSFER, fromBlock, toBlock, strict: true } as const;
+      pages.push(await Promise.all([
+        client.getLogs({ ...query, args: { to: account } }),
+        client.getLogs({ ...query, args: { from: account } }),
+      ]));
+      active();
+    }
+  } catch (cause) {
     active();
     throw new Error("Could not load this account's Friend transfers. Retry with an RPC that supports owner-filtered history; the SDK will not scan the collection.", { cause });
-  });
+  }
+  const received = pages.flatMap(([page]) => page);
+  const sent = pages.flatMap(([, page]) => page);
   active();
   if (received.length + sent.length > MAX_TRANSFER_LOGS) {
     throw new Error("This account's Friend transfer history exceeds the discovery limit; use an indexed account provider.");

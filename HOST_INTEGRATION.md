@@ -1,6 +1,6 @@
 # Game runtime and capabilities
 
-FriendSDK **v0.1.2** runs a game component in a sandboxed container with a
+FriendSDK **v0.1.4** runs a game component in a sandboxed container with a
 customizable **960 × 640** reference layout. The package
 provides wallet connection, owned Friend selection, fresh eligibility checks,
 a sandbox, simulated RF state by default and in-frame confirmations. An explicit
@@ -45,13 +45,13 @@ npm run dev:game -- examples/starter
 
 Run another game with `npm run dev:game -- games/my-game`.
 
-To install in an existing project, download `rarefriends-friendsdk-0.1.2.tgz`
-from the [v0.1.2 GitHub release](https://github.com/spokesz/friendsdk/releases/tag/v0.1.2).
+To install in an existing project, download `rarefriends-friendsdk-0.1.4.tgz`
+from the [v0.1.4 GitHub release](https://github.com/spokesz/friendsdk/releases/tag/v0.1.4).
 You can also build the archive from an SDK checkout with `npm ci` and `npm pack`.
 Put the archive in the current project directory and run:
 
 ```sh
-npm install ./rarefriends-friendsdk-0.1.2.tgz react react-dom
+npm install ./rarefriends-friendsdk-0.1.4.tgz react react-dom
 npx friendsdk init ./games/my-game
 npx friendsdk dev ./games/my-game
 ```
@@ -231,8 +231,10 @@ applies.
 
 The runtime discovers browser wallets, connects on request and finds the
 account's owned eligible Friends. Discovery uses account-filtered `Transfer`
-history and current token reads. It requires complete RPC results and does not
-scan the collection. The selected Friend then passes a separate fresh
+history and current token reads. The canonical deployment begins at its first
+`Transfer` block and paginates requests within the public RPC's block-range
+limit. It requires complete RPC results and does not scan the collection. The
+selected Friend then passes a separate fresh
 `readGenerationEligibility` check before the playable child mounts.
 
 Connection, selection, loading, wrong-network, ineligible, read-error and retry
@@ -292,11 +294,11 @@ The current client implements the supplied
 chance-game economy; other mechanics may need custom integration. Missing APIs
 below describe implementation work, not restrictions on submission ideas.
 
-| Capability | Implemented in SDK v0.1.2 | Limits or future work |
+| Capability | Implemented in SDK v0.1.4 | Limits or future work |
 | --- | --- | --- |
 | Generic game runtime | Directory runner, `GameHost`, `ConnectedGameHost`, `GameSession`, customizable frame and sandbox bridge. | 960 × 640 is the reference layout. Existing renderers/build tools can use a thin React adapter. |
 | Wallet connection | EIP-6963/injected EIP-1193 browser wallets and account/network lifecycle. | WalletConnect and native-wallet deep links are not supplied. Connection grants no transaction permission. |
-| Owned Friend discovery | Account-filtered incoming/outgoing `Transfer` reads; current ownership, generation and canonical wallet checks. | RPC must supply complete filtered history. There is no collection-scan fallback. |
+| Owned Friend discovery | Paginated account-filtered incoming/outgoing `Transfer` reads; current ownership, generation and canonical wallet checks. | RPC must supply complete filtered history. There is no collection-scan fallback. |
 | Prototype eligibility | Fresh `readGenerationEligibility` before play; account ownership and generation ≥ 1 required. | Discovery/artwork alone is insufficient. Identity changes require rechecking. |
 | Optional world tools | `GameWorld`, world presets, scenery, movement and collision utilities; scrolling-world example. | Creators may supply their own assets, rendering, visual style and camera. The viewport does not limit world dimensions. |
 | Build and test tools | CLI init/dev/build/check/test and supported Node build/serve/testing imports. | Headless mock tests require Playwright; playable previews require a real eligible wallet. |
