@@ -59,13 +59,15 @@
 .ride-game kbd{background:#e6e2d2;border:1px solid #22303a;padding:0 4px}
 
 /* スタートのタイトル（最初の1踏みまで・2026-09-25 試作） */
-.ride-title{position:absolute;left:50%;top:78px;transform:translateX(-50%);text-align:left;pointer-events:none;display:flex;align-items:center;gap:14px;
+.ride-title{position:absolute;left:50%;top:78px;transform:translateX(-50%);width:max-content;text-align:left;pointer-events:none;display:flex;align-items:center;gap:14px;
   background:#f4f1e4;border:2px solid #22303a;box-shadow:4px 4px 0 #22303a;padding:10px 22px 8px}
 .ride-portrait{display:block;flex:none}
-.ride-title h1{margin:0;font:700 40px/1 Silkscreen,ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}
-.ride-title p{margin:6px 0 0;font:400 16px/1 Silkscreen,ui-monospace,monospace}
+.ride-title h1{margin:0;white-space:nowrap;font:700 40px/1 Silkscreen,ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}
+/* 折り返さない（2026-09-30 builder: #95042 Asymmetry で「RIDE / ALONG」と 2 行目が折り返して札が伸び、下の操作ヒントに重なった。
+   left:50% の札は幅が画面の半分までに縮められていた → width:max-content。ヒントは札の下端から離す 190 → 206px） */
+.ride-title p{margin:6px 0 0;font:400 16px/1 Silkscreen,ui-monospace,monospace;white-space:nowrap}
 .ride-title .ride-type{display:inline-block;margin-top:6px;padding:1px 6px;background:#cdef3c;border:2px solid #22303a}
-.ride-hint.is-under-title{top:190px}
+.ride-hint.is-under-title{top:206px}
 .ride-hud .ride-mute{margin-right:0}
 /* スタート直後の操作ヒント（HINT_UNTIL m まで） */
 .ride-hint{position:absolute;left:50%;top:84px;transform:translateX(-50%);margin:0;white-space:nowrap;pointer-events:none;

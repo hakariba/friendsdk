@@ -1,4 +1,4 @@
-// 音。ブレーキの「シャーッ」、ベルの「チリン」、転びそうなときの「ピッピッ」、Friend が跳ねるときの「ピピッ」、転んだときの「コテン」。
+// 音。ブレーキの「シャーッ」、ベルの「チリン」、転びそうなときの「ピッピッ」、Friend が跳ねるときの「ピピッ」、転んだときの「コテン」、Friend の鼻歌（BGM の代わり）。
 // 2026-09-25: ブレーキのシャーッとベルだけに（builder「音はブレーキとチリンのみで OK」。同日の試作の風・タイヤ・空転・SDK の効果音は外した）
 // 2026-09-27: 「!」と一緒に鳴る音を追加（builder「危ない時びっくりと一緒に音」）→ 同日「もう少し高く。今の音は Friend が動くときに使えそう」で
 //   高くし、前の音（1200 → 1800Hz）は Friend が跳ねるときの hop() に回した。
@@ -20,11 +20,43 @@ const HOP_LOWPASS = 3500;
 // コテン: [始まりの Hz, 終わりの Hz, 遅れ s, 長さ s, 大きさ]。三角波の音程を すっと下げて短く減衰させる
 const FALL_KNOCKS = [[900, 480, 0, 0.07, 0.22], [640, 300, 0.13, 0.18, 0.2]] as const;
 
+// ---- Friend の鼻歌（2026-09-28 builder「BGM を Friend の鼻歌にする」）----------------------------------
+// BGM の代わりに、Friend が機嫌しだいで鼻歌を歌う。1 フレーズ歌ったら HUM_GAP 拍休む。
+// 気分（mood）はゲームが毎フレーム渡す: rest = 黙る（止まっている・遅い・「!」・転倒・スタミナ切れ・メニュー）／walk = ふつう／fast = 速い（テンポと音程が上がる）／climb = 急な登り（ゆっくり低く）。
+// rest になったらその場で フッと止め、rest 以外が HUM_WAIT 秒続いたら次のフレーズから歌いだす。
+// 声: 三角波を低めのフィルタで丸め（ハミングらしく）、音と音はすべらせてつなぎ、伸ばす音だけビブラート
+export type HumMood = "rest" | "walk" | "fast" | "climb";
+const HUM_ON = true;
+const HUM_LEVEL = 0.05;
+const HUM_LOWPASS = 1100;      // Hz
+const HUM_BASE = 523.25;       // Hz（ド = C5。音階の 0）
+const HUM_WAIT = 1.2;          // s
+const HUM_GAP = 4;             // 拍（8 分音符の数）
+const HUM_GLIDE = 0.035;       // s  次の音へすべる時間
+const HUM_VIBRATO = [5.5, 0.008] as const; // [Hz, 深さ（周波数の割合）]
+// 気分ごとの [8 分音符の長さ s, 移調（半音）]
+const HUM_STYLE: Readonly<Record<Exclude<HumMood, "rest">, readonly [number, number]>> = {
+  walk: [0.24, 0], fast: [0.19, 5], climb: [0.34, -3],
+};
+// フレーズ: [音階（ド=0 の半音）, 長さ（8 分音符の数）]。null は休み。のんびりした 5 音音階の歌を 4 つ、順に回す
+const HUM_PHRASES: readonly (readonly (readonly [number | null, number])[])[] = [
+  [[4, 1], [7, 1], [9, 2], [7, 1], [4, 1], [2, 2], [0, 1], [2, 1], [4, 4]],
+  [[4, 1], [7, 1], [9, 2], [12, 1], [9, 1], [7, 2], [4, 1], [7, 1], [9, 4]],
+  [[9, 1], [12, 1], [14, 2], [12, 1], [9, 1], [7, 2], [null, 1], [4, 1], [7, 1], [9, 3]],
+  [[7, 1], [4, 1], [2, 2], [4, 1], [2, 1], [0, 2], [null, 1], [2, 1], [4, 1], [0, 3]],
+];
+// 急な登りは息が続かない: 各フレーズの最初の半分だけ（途切れ途切れ）
+const HUM_CLIMB_NOTES = 4;
+
 export type RideSound = {
   /** プレイヤーの操作の中で呼ぶ。2回目以降は止まっていれば再開するだけ */
   unlock(): void;
-  /** 毎フレーム。v = m/s、braking = ブレーキ中、active = 走っている（止め・メニュー・転倒中は false） */
-  update(v: number, braking: boolean, active: boolean): void;
+  /** 毎フレーム。v = m/s、braking = ブレーキ中、active = 走っている（止め・メニュー・転倒中は false）、mood = 鼻歌の気分 */
+  update(v: number, braking: boolean, active: boolean, mood?: HumMood): void;
+  /** 鼻歌のフレーズを歌っている最中か（音が出ているときだけ true。ミュート・音がまだ有効でないときは false） */
+  humming(): boolean;
+  /** Friend の声の高さ（1 = 基準） */
+  setVoice(ratio: number): void;
   bell(): void;
   /** 転びそうになった瞬間の「ピッピッ」 */
   danger(): void;
@@ -40,6 +72,55 @@ export function createRideSound(): RideSound {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null, brake: GainNode | null = null;
   let muted = false;
+  // 鼻歌の状態: 歌っているフレーズ（止めるための音とゲイン・終わる時刻）、次に歌えるようになる時刻、何番目のフレーズか、声の高さ
+  let phrase: { osc: OscillatorNode; lfo: OscillatorNode; gain: GainNode; endsAt: number } | null = null;
+  let singSince = -1, nextPhraseAt = 0, phraseIndex = 0, voice = 1;
+
+  const stopPhrase = () => {
+    if (!ctx || !phrase) return;
+    const now = ctx.currentTime;
+    phrase.gain.gain.cancelScheduledValues(now);
+    phrase.gain.gain.setTargetAtTime(0, now, 0.05);
+    phrase.osc.stop(now + 0.4); phrase.lfo.stop(now + 0.4);
+    phrase = null;
+  };
+  const startPhrase = (mood: Exclude<HumMood, "rest">) => {
+    if (!ctx || !master) return;
+    const [beat, shift] = HUM_STYLE[mood];
+    const notes = HUM_PHRASES[phraseIndex % HUM_PHRASES.length];
+    phraseIndex++;
+    const sung = mood === "climb" ? notes.slice(0, HUM_CLIMB_NOTES) : notes;
+    const start = ctx.currentTime + 0.05;
+    const soften = ctx.createBiquadFilter(); soften.type = "lowpass"; soften.frequency.value = HUM_LOWPASS; soften.connect(master);
+    const gain = ctx.createGain(); gain.gain.setValueAtTime(0, start); gain.connect(soften);
+    const osc = ctx.createOscillator(); osc.type = "triangle";
+    const lfo = ctx.createOscillator(); lfo.frequency.value = HUM_VIBRATO[0];
+    const depth = ctx.createGain(); depth.gain.value = 0;
+    lfo.connect(depth); depth.connect(osc.frequency); osc.connect(gain);
+    let t = start, previous = 0;
+    for (const [step, length] of sung) {
+      const len = length * beat;
+      if (step === null) {
+        gain.gain.setTargetAtTime(0, t, 0.03);
+      } else {
+        const freq = HUM_BASE * voice * 2 ** ((step + shift) / 12);
+        if (!previous) osc.frequency.setValueAtTime(freq, t);
+        else { osc.frequency.setValueAtTime(previous, t); osc.frequency.exponentialRampToValueAtTime(freq, t + HUM_GLIDE); }
+        previous = freq;
+        // 音の頭で少しふくらみ、終わりに向けて少ししぼむ（音と音の区切り）
+        gain.gain.setTargetAtTime(HUM_LEVEL, t, 0.025);
+        gain.gain.setTargetAtTime(HUM_LEVEL * 0.6, t + len * 0.7, 0.04);
+        // 伸ばす音（2 拍以上）だけ、後半にビブラート
+        depth.gain.setValueAtTime(0, t);
+        if (length >= 2) depth.gain.linearRampToValueAtTime(freq * HUM_VIBRATO[1], t + len * 0.9);
+      }
+      t += len;
+    }
+    gain.gain.setTargetAtTime(0, t - 0.05, 0.05);
+    osc.start(start); lfo.start(start); osc.stop(t + 0.4); lfo.stop(t + 0.4);
+    phrase = { osc, lfo, gain, endsAt: t };
+    nextPhraseAt = t + HUM_GAP * beat;
+  };
 
   const blips = (notes: readonly (readonly [number, number])[], level: number, lowpass: number) => {
     if (!ctx || !master || muted) return;
@@ -77,11 +158,22 @@ export function createRideSound(): RideSound {
       source.start();
       if (context.state === "suspended") void context.resume();
     },
-    update(v, braking, active) {
+    update(v, braking, active, mood = "rest") {
       if (!ctx || !brake) return;
       const level = BRAKE_SOUND_ON && active && braking && v > 0.8 ? BRAKE_MAX * Math.min(1, v / 6) : 0;
       brake.gain.setTargetAtTime(level, ctx.currentTime, 0.03);
+      // 鼻歌
+      const now = ctx.currentTime;
+      if (phrase && now > phrase.endsAt) phrase = null;
+      if (!HUM_ON || mood === "rest" || muted || ctx.state !== "running") {
+        stopPhrase(); singSince = -1;
+        return;
+      }
+      if (singSince < 0) singSince = now;
+      if (!phrase && now - singSince >= HUM_WAIT && now >= nextPhraseAt) startPhrase(mood);
     },
+    humming() { return phrase !== null && !!ctx && ctx.currentTime <= phrase.endsAt; },
+    setVoice(ratio) { voice = ratio; },
     bell() {
       if (!ctx || !master || muted) return;
       // チリン: 2つの高い正弦波を2回、少しずらして減衰させる

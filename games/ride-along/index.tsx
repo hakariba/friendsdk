@@ -13,7 +13,7 @@ import { GENERATION_ELIGIBILITY_ABI } from "@rarefriends/friendsdk/identity";
 import { createPublicClient, http } from "viem";
 import "@rarefriends/friendsdk/frame.css";
 import "./style.css";
-import { createRideSound, type RideSound } from "./audio.js";
+import { createRideSound, type HumMood, type RideSound } from "./audio.js";
 
 // 画面は 960×640。ただし描画は 192×128 の低解像度バッファに行い、整数5倍で引き伸ばす
 // （SPEC 3章の決定）。台形もベジェも階段になり、Friend のドット粒度と世界が揃う。
@@ -498,6 +498,10 @@ type Ride = {
   dangerOn: boolean; dangerSoundAt: number;
   /** スピードで喜んだ時刻（time の値）・次に喜べるか・LOOK_FWD_V 以上で走り続けている時間（s）・前を向きはじめた時刻（time の値）・ゴールの跳ねの音を鳴らした数 */
   joyAt: number; joyArmed: boolean; cruiseT: number; fwdAt: number; goalHops: number;
+  /** 川・小川に落ちて転んだか（再開までのあいだ）・ぶるぶるを始める時刻（time の値） */
+  wetFall: boolean; shakeAt: number;
+  /** 鼻歌のフレーズを歌っている最中か（音から。頭の横の小さな音符用） */
+  humOn: boolean;
   /** 転倒までの近さ（|θ| ÷ 転ぶ傾き。1 で転ぶ）。Friend の「!」用 */
   danger: number;
   /** 区間に入った時刻（clock の値・区間の番号ごと。最初に入ったときだけ）と、いま出している差（s）と出す期限（time の値） */
@@ -643,7 +647,7 @@ const freshRide = (): Ride => ({
   stroke: null, strokeStart: 0, strokeDone: 0,
   footDown: true, launching: true, pushLeft: 0, psiView: 0, climbView: 0, steerView: 0, steerDir: 0, steerHold: 0,
   clock: 0, topSpeed: 0, finished: false, finishedAt: 0, remount: 0,
-  introT: -1, colorView: 0, bellAt: -10, stillTime: 0, braking: false, pedalAt: -10, cheerAt: -1, coinState: 0, collectReal: -1, coinRect: null, dangerOn: false, dangerSoundAt: -10, joyAt: -10, joyArmed: true, cruiseT: 0, fwdAt: -100, goalHops: 0, danger: 0, splits: [], splitDelta: 0, splitUntil: -1,
+  introT: -1, colorView: 0, bellAt: -10, stillTime: 0, braking: false, pedalAt: -10, cheerAt: -1, coinState: 0, collectReal: -1, coinRect: null, dangerOn: false, dangerSoundAt: -10, joyAt: -10, joyArmed: true, cruiseT: 0, fwdAt: -100, goalHops: 0, wetFall: false, shakeAt: -10, humOn: false, danger: 0, splits: [], splitDelta: 0, splitUntil: -1,
 });
 
 // ---- 描画 -----------------------------------------------------------------
@@ -819,6 +823,42 @@ function riverShift(s: number): number {
   return -RIVER_AWAY * smooth(leaveFrom, leaveFrom + RIVER_LEAVE, s) * (1 - smooth(backFrom, backFrom + RIVER_BACK, s));
 }
 
+// タイプの動き（2026-09-28 builder が案出しから選んだもの）
+// バランス型: 自転車が傾くと、Friend が反対側へ体を寄せて手伝う（倒れる傾きの COUNTER_LEAN_FROM 倍で COUNTER_LEAN_PX px、COUNTER_LEAN_FULL 倍でその 2 倍。1px だと画面 5px で見えなかった）
+const COUNTER_LEAN_ON = true;
+const COUNTER_LEAN_FROM = 0.3, COUNTER_LEAN_FULL = 0.6;
+const COUNTER_LEAN_PX = 2;    // 内部px（Friend の 1 ドット）
+// パワー型: 登り（勾配 PUSH_GRADE 以上＝4% の登りから）で漕いでいる間、一緒に踏ん張る（1px 沈む・踏むたびに持ち上がる）。
+// 急な登り（PUSH_SWEAT_GRADE 以上＝最後の +9%）では汗が PUSH_SWEAT_EVERY 秒おきに垂れる
+const POWER_PUSH_ON = true;
+const PUSH_GRADE = 0.035;
+const PUSH_SWEAT_GRADE = 0.07;
+const PUSH_SWEAT_EVERY = 1.4; // s
+// 川・小川に落ちたら、カゴに戻ったあと SHAKE_LEN 秒 ぶるぶる体を振って水を飛ばす
+const SHAKE_ON = true;
+const SHAKE_LEN = 0.9;        // s
+// 記号（頭の上）: 「?」は止まってキョロキョロしはじめて QUESTION_LEN 秒、「♥」は止まっているときにベルを鳴らしたら HEART_LEN 秒と、ゴールのスローで跳ねている間
+const MARKS_ON = true;
+const QUESTION_LEN = 1.4;     // s
+const HEART_LEN = 0.9;        // s
+
+// 鼻歌（2026-09-28 builder「BGM を Friend の鼻歌にする」。音は audio.ts）: 気分をここで決めて毎フレーム渡す。
+// 歌うのは HUM_FROM_V 以上で走っているとき（歌っている最中は HUM_KEEP_V まで下がっても続ける）と、急な登り（ゆっくり低く・途切れ途切れ）。
+// 30km/h（EXCITED_V）以上は速い歌。止まっている・「!」・転倒・スタミナ切れ・メニューでは黙る。ゴールのあと転がっている間は歌う
+const HUM_FROM_V = 12 / 3.6;  // m/s
+const HUM_KEEP_V = 8 / 3.6;   // m/s
+const HUM_VOICE_SPREAD = 0.05; // 声の高さの個体差（±）
+// 歌っている間、頭の左に小さな白い音符（HUM_NOTE_EVERY 秒おきに昇る）。音が出ていないとき（ミュート・音がまだ有効でない）は出ない
+const HUM_NOTE_ON = true;
+const HUM_NOTE_EVERY = 1.3;   // s
+function humMood(ride: Ride, blocked: boolean): HumMood {
+  if (blocked || ride.falling > 0 || ride.footDown || ride.stamina < STAMINA_LOW) return "rest";
+  if (!ride.finished && ride.danger > DANGER_FROM) return "rest";
+  if (!ride.finished && gradeAt(ride.s) >= PUSH_SWEAT_GRADE && ride.v > 1) return "climb";
+  if (ride.v < (ride.humOn ? HUM_KEEP_V : HUM_FROM_V)) return "rest";
+  return ride.v >= EXCITED_V ? "fast" : "walk";
+}
+
 // 転びそうなとき Friend の頭の上に「!」（転ぶ傾きの DANGER_FROM 倍を超えたら。点滅はコマ送り）
 const DANGER_ON = true;
 const DANGER_FROM = 0.7;
@@ -853,8 +893,61 @@ function goalCoin(rows: readonly string[]): HTMLCanvasElement {
   return canvas;
 }
 
-/** Friend を描く（SDK の原画を整数倍。縁取りは拡大後のシルエットの外周1px） */
-function paintFriend(ctx: CanvasRenderingContext2D, rows: readonly string[], left: number, top: number) {
+// ---- Friend の表情と身に着けるもの（2026-09-28 builder が案出しから選んだもの）。どれも reduced-motion では出さない
+// 目: 原画の「黒の中の白い穴」のうち、一番上にある小さな穴（4 ドット以下）を目とみなす。口や胴の穴（Asymmetry・Mask）はそれより下なので外れる。
+// Hollow は顔全体が中抜きで小さな穴が無い → 目の演出なし（原画のまま）
+const BLINK_ON = true;
+const BLINK_EVERY = 3.2;      // s  平均の間隔（実際は 1 回ごとに 0〜BLINK_JITTER 秒ずらす）
+const BLINK_JITTER = 2.0;     // s
+const BLINK_LEN = 0.12;       // s  閉じている時間
+const WIDE_EYES_ON = true;    // 驚いたら目が大きくなる（「!」が出ている間と、転んで飛び出している間）
+// 転んだ回数が HELMET_FALLS 回になったら、再開のときにヘルメットをかぶっている（Ride again で脱ぐ）
+const HELMET_ON = true;
+const HELMET_FALLS = 3;
+type FriendLook = { eyes?: "open" | "closed" | "wide"; helmet?: boolean };
+type EyeCells = readonly (readonly [number, number])[];
+const eyeCache = new WeakMap<readonly string[], EyeCells>();
+/** 原画の目のドット（[x, y]）。見つからなければ空 */
+function friendEyes(rows: readonly string[]): EyeCells {
+  const hit = eyeCache.get(rows);
+  if (hit) return hit;
+  const h = rows.length, w = rows[0]?.length ?? 0;
+  const solid = (x: number, y: number) => y >= 0 && y < h && x >= 0 && x < w && rows[y][x] === "#";
+  // 外から塗りつぶして、届かなかった空白＝穴
+  const outside = new Set<number>();
+  const key = (x: number, y: number) => (y + 1) * (w + 2) + x + 1;
+  const stack: [number, number][] = [[-1, -1]];
+  while (stack.length) {
+    const [x, y] = stack.pop()!;
+    if (x < -1 || y < -1 || x > w || y > h || solid(x, y) || outside.has(key(x, y))) continue;
+    outside.add(key(x, y));
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+  const seen = new Set<number>(), groups: [number, number][][] = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (solid(x, y) || outside.has(key(x, y)) || seen.has(key(x, y))) continue;
+    const group: [number, number][] = [], todo: [number, number][] = [[x, y]];
+    seen.add(key(x, y));
+    while (todo.length) {
+      const [cx, cy] = todo.pop()!;
+      group.push([cx, cy]);
+      for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]] as const) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || solid(nx, ny) || outside.has(key(nx, ny)) || seen.has(key(nx, ny))) continue;
+        seen.add(key(nx, ny)); todo.push([nx, ny]);
+      }
+    }
+    groups.push(group);
+  }
+  const small = groups.filter(g => g.length <= 4);
+  const topOf = (g: [number, number][]) => Math.min(...g.map(([, y]) => y));
+  const top = small.length ? Math.min(...small.map(topOf)) : 0;
+  const eyes = small.filter(g => topOf(g) <= top + 1).flat();
+  eyeCache.set(rows, eyes);
+  return eyes;
+}
+
+/** Friend を描く（SDK の原画を整数倍。縁取りは拡大後のシルエットの外周1px）。look で目の開き方・ヘルメット */
+function paintFriend(ctx: CanvasRenderingContext2D, rows: readonly string[], left: number, top: number, look: FriendLook = {}) {
   const width = rows[0]?.length ?? 16;
   const d = FRIEND_DOT;
   const lit = (x: number, y: number) => {
@@ -874,12 +967,56 @@ function paintFriend(ctx: CanvasRenderingContext2D, rows: readonly string[], lef
   rows.forEach((row, y) => [...row].forEach((pixel, x) => {
     if (pixel === "#") ctx.fillRect(left + x * d, top + y * d, d, d);
   }));
+  const eyes = look.eyes && look.eyes !== "open" ? friendEyes(rows) : [];
+  if (look.eyes === "closed") {
+    // 閉じた目: 穴を黒で埋め、いちばん下の段だけ下 1px を白い線で残す
+    const bottom = new Map<number, number>();
+    eyes.forEach(([x, y]) => bottom.set(x, Math.max(bottom.get(x) ?? -1, y)));
+    eyes.forEach(([x, y]) => {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(left + x * d, top + y * d, d, d);
+      if (bottom.get(x) === y) { ctx.fillStyle = "#fff"; ctx.fillRect(left + x * d, top + y * d + d - 1, d, 1); }
+    });
+  } else if (look.eyes === "wide") {
+    // 見開いた目: 穴をまわりに 1px ずつ広げる
+    ctx.fillStyle = "#fff";
+    eyes.forEach(([x, y]) => ctx.fillRect(left + x * d - 1, top + y * d - 1, d + 2, d + 2));
+  }
+  if (look.helmet) paintHelmet(ctx, rows, left, top);
+}
+
+/** ヘルメット（ライムの殻・濃紺の縁・白い光）。頭のてっぺん（4 ドット以上つながった最初の段）にかぶせ、目より上で止める。耳は上に出てよい */
+function paintHelmet(ctx: CanvasRenderingContext2D, rows: readonly string[], left: number, top: number) {
+  const d = FRIEND_DOT;
+  const head = rows.findIndex(row => /#{4,}/.test(row));
+  if (head < 0) return;
+  const eyes = friendEyes(rows);
+  const eyeTop = eyes.length ? Math.min(...eyes.map(([, y]) => y)) : Infinity;
+  const bottom = Math.max(head, Math.min(head + 1, eyeTop - 1));
+  // 横の広がりは頭の段（head〜bottom）の中で一番長くつながった所
+  let from = 0, to = -1;
+  for (let y = head; y <= bottom; y++) {
+    for (const m of rows[y].matchAll(/#+/g)) {
+      if (m[0].length > to - from + 1) { from = m.index ?? 0; to = from + m[0].length - 1; }
+    }
+  }
+  const x0 = left + (from - 1) * d, x1 = left + (to + 2) * d; // 左右に 1 ドットはみ出す
+  const y0 = top + (head - 1) * d, y1 = top + (bottom + 1) * d;
+  // 殻（上の段は左右 1 ドットずつ内側＝丸く）。縁取りは上と横だけ外に出し、下の縁（つば）は y1 の手前 1px＝目の段にかからない
+  ctx.fillStyle = "#22303a";
+  ctx.fillRect(x0 + d - 1, y0 - 1, x1 - x0 - 2 * d + 2, d + 1);
+  ctx.fillRect(x0 - 1, y0 + d - 1, x1 - x0 + 2, y1 - y0 - d + 1);
+  ctx.fillStyle = "#cdef3c";
+  ctx.fillRect(x0 + d, y0, x1 - x0 - 2 * d, d);
+  ctx.fillRect(x0, y0 + d, x1 - x0, y1 - y0 - d - 1);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x0 + d + 1, y0 + 1, Math.min(3, x1 - x0 - 2 * d - 2), 1);
 }
 
 /** カゴと、その中の Friend（rows が null なら空のカゴ＝飛び出している間）。friendDy は Friend だけ上下にずらす量 */
 function paintBasketAndFriend(
   ctx: CanvasRenderingContext2D, rows: readonly string[] | null,
-  centreX: number, baseY: number, friendDy: number, friendDx = 0,
+  centreX: number, baseY: number, friendDy: number, friendDx = 0, look: FriendLook = {},
 ) {
   const cx = Math.round(centreX);
   const by = Math.round(baseY);
@@ -891,7 +1028,7 @@ function paintBasketAndFriend(
   // 2) Friend
   if (rows) {
     const width = rows[0]?.length ?? 16;
-    paintFriend(ctx, rows, cx - Math.round(width * FRIEND_DOT / 2) + Math.round(friendDx), by + FRIEND_SUNK - rows.length * FRIEND_DOT + Math.round(friendDy));
+    paintFriend(ctx, rows, cx - Math.round(width * FRIEND_DOT / 2) + Math.round(friendDx), by + FRIEND_SUNK - rows.length * FRIEND_DOT + Math.round(friendDy), look);
   }
 
   // 3) 前板。色数を絞り、編み目は近い色の横線だけ（主張を控えめに・2026-09-23）
@@ -956,7 +1093,7 @@ function paintSlowGlow(ctx: CanvasRenderingContext2D, work: HTMLCanvasElement, a
 
 function paintScene(
   ctx: CanvasRenderingContext2D, ride: Ride, sprites: GenerationSprites,
-  frame: number, stillFriend: boolean, clearance: number,
+  frame: number, stillFriend: boolean, clearance: number, type: FriendType = "allround",
 ) {
   const roll = -(ride.theta * ROLL_VIEW + ride.steerView * STEER_ROLL);
   const look = ride.steerView * STEER_LOOK + ride.psiView * PSI_LOOK;
@@ -1208,8 +1345,10 @@ function paintScene(
         const reach = (x: number) => Math.max(0, x - (HALF_WIDTH + 1));
         const centre = (x: number) => BRIDGE_AT + BRIDGE_WATER / 2 + reach(x) * 0.9 + Math.sin(reach(x) * 0.22) * 3 - ride.s;
         const width = (x: number) => BRIDGE_WATER * (1 - 0.55 * Math.min(1, reach(x) / 30));
+        // 水は左の川の岸（RIVER_NEAR − 0.35m）の外まで塗る。前は RIVER_NEAR − 0.1 までで、岸の残り 0.25m が水の上に斜めの線で残り、
+        // 色を丸めると草の色になって「橋の左の川に緑の点線」に見えた（2026-09-28）。小川の岸（bank > 0）は川の上に出ないよう今のまま
         const band = (bank: number) => {
-          const xs = [RIVER_NEAR - 0.1, HALF_WIDTH + 1];
+          const xs = [bank > 0 ? RIVER_NEAR - 0.1 : RIVER_NEAR - 0.5, HALF_WIDTH + 1];
           for (let x = HALF_WIDTH + 4; x <= HALF_WIDTH + 40; x += 3) xs.push(x);
           for (let k = 0; k < xs.length - 1; k++) {
             const x0 = xs[k], x1 = xs[k + 1];
@@ -1490,6 +1629,9 @@ function paintScene(
   // 小さな反応（ゴール・飛び出し・スタート・再開の最中は出さない）
   const alive = FRIEND_REACT_ON && !stillFriend && !ride.finished && flight < 0 && cheer < 0 && intro < 0 && ride.remount <= 0;
   const warn = DANGER_ON && !stillFriend && flight < 0 && !ride.finished && ride.danger > DANGER_FROM;
+  const pushing = POWER_PUSH_ON && alive && type === "power" && !ride.footDown && gradeAt(ride.s) >= PUSH_GRADE;
+  const shakeT = ride.time - ride.shakeAt;
+  const shake = SHAKE_ON && alive && shakeT >= 0 && shakeT < SHAKE_LEN ? shakeT : -1;
   let react: "down" | "left" | "right" | "up" = "down";
   let reactDy = 0, reactDx = 0;
   if (alive) {
@@ -1514,6 +1656,13 @@ function paintScene(
     if (rang >= 0 && rang < 0.5) reactDy -= Math.round(Math.sin(rang / 0.5 * Math.PI) * BELL_HOP);
     if (ride.braking && ride.v > 3) reactDy -= BRAKE_LURCH;
     if (gradeAt(ride.s) > 0.03 && ride.time - ride.pedalAt < 0.25) reactDy -= 1; // 登り: 踏むたびに小さく弾む
+    // バランス型: 傾いた側と反対へ体を寄せる
+    const tilt = Math.abs(ride.theta) / THETA_MAX;
+    if (COUNTER_LEAN_ON && type === "balance" && tilt >= COUNTER_LEAN_FROM) reactDx -= Math.sign(ride.theta) * (tilt >= COUNTER_LEAN_FULL ? 2 : 1) * COUNTER_LEAN_PX;
+    // パワー型: 登りで一緒に踏ん張る（沈む。踏んだ瞬間は上の「弾む」で持ち上がる）
+    if (pushing) reactDy += 1;
+    // 川に落ちたあと: ぶるぶる（左右に 1px ずつ）
+    if (shake >= 0) reactDx += Math.floor(shake * 16) % 2 ? 1 : -1;
   }
   const goalJoy = cheer >= 0 && cheer < GOAL_JOY;
   const facing = cheer < 0 ? react : goalJoy ? "down" : cheer < LOOK_FROM ? "right" : cheer < LOOK_UNTIL ? "up"
@@ -1542,8 +1691,15 @@ function paintScene(
     const fx = Math.round(VIEW.width + w / 2 + (basketX + INTRO_LAND_DX - VIEW.width - w / 2) * p);
     paintFriend(ctx, walk, fx - (w >> 1), INTRO_GROUND_Y - h);
   }
+  // 目（まばたき・見開く）とヘルメット。ヘルメットは HELMET_FALLS 回目に転んで、カゴに戻ったときから
+  const blinkK = Math.floor(ride.time / BLINK_EVERY), blinkAt = blinkK * BLINK_EVERY + hash(blinkK * 7.3) * BLINK_JITTER;
+  const blinking = BLINK_ON && ride.time >= blinkAt && ride.time < blinkAt + BLINK_LEN;
+  const friendLook: FriendLook = {
+    eyes: stillFriend ? "open" : WIDE_EYES_ON && (warn || flight >= 0) ? "wide" : blinking ? "closed" : "open",
+    helmet: HELMET_ON && (ride.falls > HELMET_FALLS || (ride.falls === HELMET_FALLS && ride.falling <= 0)),
+  };
   paintRotatedCrisp(ctx, basketX, basketY, lean, layer =>
-    paintBasketAndFriend(layer, flight >= 0 || walking ? null : rows, basketX, basketY, friendDy, friendDx));
+    paintBasketAndFriend(layer, flight >= 0 || walking ? null : rows, basketX, basketY, friendDy, friendDx, friendLook));
 
   paintRotatedCrisp(ctx, bodyX, baseY, twist, ctx => {
     // ハンドルの前後: 踏んだ側のグリップを手前に引き、反対側が前へ出る。
@@ -1650,6 +1806,50 @@ function paintScene(
     }
   }
 
+  // 頭の上の記号「?」「♥」（「!」「♪」と同じく、縁取りしたドット）。「!」が出ている間は出さない
+  const headY = basketY + FRIEND_SUNK - rows.length * FRIEND_DOT + Math.round(friendDy);
+  const stamp = (grid: readonly string[], x: number, y: number, fill: string, edge: string) => {
+    for (const [colour, pad] of [[edge, 1], [fill, 0]] as const) {
+      ctx.fillStyle = colour;
+      grid.forEach((row, gy) => [...row].forEach((cell, gx) => {
+        if (cell === "#") ctx.fillRect(x + gx - pad, y + gy - pad, 1 + pad * 2, 1 + pad * 2);
+      }));
+    }
+  };
+  if (MARKS_ON && !stillFriend && !warn && flight < 0) {
+    const question = alive && ride.footDown && ride.stillTime >= LOOK_AROUND_AFTER && ride.stillTime < LOOK_AROUND_AFTER + QUESTION_LEN;
+    const rang = ride.time - ride.bellAt;
+    const heart = (alive && ride.footDown && rang >= 0 && rang < HEART_LEN) || goalJoy;
+    if (question) stamp([".###.", "#...#", "...#.", "..#..", ".....", "..#.."], basketX + 13, headY - 8, "#ffffff", "#22303a");
+    else if (heart) {
+      const rise = goalJoy ? 0 : Math.round(rang / HEART_LEN * 4);
+      stamp(["##.##", "#####", "#####", ".###.", "..#.."], basketX + 13, headY - 7 - rise, "#e8667f", "#22303a");
+    }
+  }
+  // 鼻歌の音符（頭の左。白・濃紺の縁。HUM_NOTE_EVERY 秒おきに 6px 昇って消える）
+  if (HUM_NOTE_ON && ride.humOn && !stillFriend && !warn && flight < 0 && !(alive && joyful)) {
+    const q = (ride.time % HUM_NOTE_EVERY) / HUM_NOTE_EVERY;
+    if (q < 0.75) stamp(["..#", "..#", "###", "##."], basketX - 20 - Math.round(q * 3), headY - 2 - Math.round(q * 8), "#ffffff", "#22303a");
+  }
+  // パワー型の汗（頭の右から垂れる。水色＋白い光）
+  if (pushing && gradeAt(ride.s) >= PUSH_SWEAT_GRADE) {
+    const phase = (ride.time % PUSH_SWEAT_EVERY) / PUSH_SWEAT_EVERY;
+    if (phase < 0.6) {
+      const y = headY + 6 + Math.round(phase * 10);
+      ctx.fillStyle = "#9cc8e4"; ctx.fillRect(basketX + 15, y, 2, 3); ctx.fillRect(basketX + 16, y - 1, 1, 1);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(basketX + 15, y + 1, 1, 1);
+    }
+  }
+  // ぶるぶるで飛ぶ水滴（左右へ 3 粒ずつ、放物線で落ちる）
+  if (shake >= 0) {
+    ctx.fillStyle = "#9cc8e4";
+    for (let k = 0; k < 6; k++) {
+      const side = k % 2 ? 1 : -1, t = shake + (k >> 1) * 0.12;
+      const x = basketX + side * Math.round(12 + t * (38 + k * 5)), y = headY + 10 + Math.round(-t * 26 + t * t * 70);
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+
   // 飛び出した Friend（転んだ側へ放物線で飛び、回りながら画面の下へ抜ける）。ハンドルより手前に描く
   if (flight >= 0) {
     const side = ride.theta >= 0 ? 1 : -1;
@@ -1659,7 +1859,7 @@ function paintScene(
     // 回転は 90° ずつのコマ送り（2026-09-25。斜めに回すとドットが崩れて見えた。約 0.3 秒ごとに 1/4 回転）
     const spin = side * Math.round(FLY_SPIN * flight / (Math.PI / 2)) * (Math.PI / 2);
     paintRotatedCrisp(ctx, fx, fy, spin, layer =>
-      paintFriend(layer, rows, Math.round(fx - w / 2), Math.round(fy - h / 2)));
+      paintFriend(layer, rows, Math.round(fx - w / 2), Math.round(fy - h / 2), friendLook));
   }
 
   // コインを取った演出（実時間・コマ送り 1/12 秒）。reduced-motion では出さない
@@ -1705,6 +1905,7 @@ const PALETTE = [
   "#9a8a6c", "#857658",                                   // カゴ（前板・縁と編み目）
   "#3c4046", "#22303a", "#000000",                        // ハンドル・グリップ・Friend
   "#cdef3c",                                              // ゴールの目印（UI の差し色と同じライム・2026-09-26）
+  "#e8667f",                                              // Friend の「♥」（2026-09-28）
 ] as const;
 const paletteRgb = PALETTE.map(hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)));
 const palettePacked = paletteRgb.map(([r, g, b]) => (0xff000000 | (b << 16) | (g << 8) | r) >>> 0);
@@ -1871,6 +2072,7 @@ export default function RideAlong({ friendId, client, paused }: GameComponentPro
       traitsRef.current = TEST_TRAITS ?? (fixed !== null ? { type: "allround", power: fixed, balance: fixed, stamina: fixed }
         : friendTraits(friendId, sprites.familyName, null));
       setPortrait({ rows: spriteFrame(sprites, "down", false, 0, "right").frame.rows, family: sprites.familyName, type: traitsRef.current.type });
+      sound.current?.setVoice(1 + (friendHash(friendId + 7n) * 2 - 1) * HUM_VOICE_SPREAD); // 鼻歌の声の高さは Friend ごと
       // 世代の上乗せは読めたらあとから（起動を待たせない）
       if (fixed === null && TEST_TRAITS === null) void readGeneration(friendId).then(generation => {
         if (!cancelled && generation !== null) traitsRef.current = friendTraits(friendId, sprites.familyName, generation);
@@ -1922,6 +2124,7 @@ export default function RideAlong({ friendId, client, paused }: GameComponentPro
               it.s = Math.max(0, it.s - 12);
               it.x = 0; it.psi = 0; it.theta = 0; it.v = 0; it.expect = "L"; it.stroke = null;
               it.footDown = true; it.launching = true; it.pushLeft = 0; it.remount = REMOUNT_TIME;
+              if (it.wetFall) { it.shakeAt = it.time + REMOUNT_TIME; it.wetFall = false; } // カゴに戻ったら ぶるぶる
               it.danger = 0; // 転ぶ直前の値が残ると、再開後に「!」が出続けた（2026-09-26 builder「転んだあとの！はいらない」）
             }
           } else if (it.footDown) {
@@ -1996,6 +2199,7 @@ export default function RideAlong({ friendId, client, paused }: GameComponentPro
             if (!it.finished && (Math.abs(it.theta) > (THETA_MAX + ease) * traitsRef.current.balance || Math.abs(it.x) > HALF_WIDTH + 4 || inWater(it))) {
               it.falling = FALL_TIME;
               it.falls += 1;
+              it.wetFall = inWater(it);
               sound.current?.fall(); // 「コテン」
             }
             // ゴール（登りきった所）。ペダルは受け付けず、惰性で止まって足をつく。止まる途中で転ばないよう傾きも戻す。
@@ -2069,10 +2273,11 @@ export default function RideAlong({ friendId, client, paused }: GameComponentPro
           : it.cheerAt >= 0 && it.time - it.cheerAt >= RESULT_DELAY)) {
           setResult(pendingResult.current); pendingResult.current = null;
         }
-        sound.current?.update(it.v, held.current.brake, !blocked && it.falling <= 0 && !it.footDown);
+        sound.current?.update(it.v, held.current.brake, !blocked && it.falling <= 0 && !it.footDown, humMood(it, blocked));
+        it.humOn = sound.current?.humming() ?? false;
         // Friend のコマはゲームの時間で進める（スローの間はゆっくり・止めている間は止まる）
         paintScene(low, it, sprites, Math.floor(it.time / 0.11) % 8, live.current.reducedMotion,
-          toolbarClearance(node.clientHeight));
+          toolbarClearance(node.clientHeight), traitsRef.current.type);
         if (PALETTE_ON) quantize(low, COLOR_BLOOM_ON ? it.colorView : 1);
         // 補間を切って整数倍に拡大。これで台形もベジェも全部ドットの階段になる。
         ctx.imageSmoothingEnabled = false;

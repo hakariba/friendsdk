@@ -1,6 +1,6 @@
 # Ride Along
 
-SDK **v0.1.2**. A first-person bicycle ride along a river. Your selected Friend rides
+SDK **v0.1.4**. A first-person bicycle ride along a river. Your selected Friend rides
 in the front basket, facing you and reacting to the ride.
 
 **Prototype status.** This build covers one course (a riverside start, a braking descent
@@ -15,7 +15,12 @@ path and hops into the basket; the first stroke skips this. After a few seconds 
 20 km/h, the Friend turns to look down the road ahead for a while (and keeps looking even
 if you slow down), then turns back to you. Each time you pass 32 km/h it turns to you and
 hops twice with a little note above its head, and it flaps about while you are that fast. It shows a "!" when you are close
-to falling, and is thrown out of the basket when you fall, climbing back in when you restart. From your second ride, each new section shows
+to falling (its eyes go wide), and is thrown out of the basket when you fall, climbing back in when you restart.
+It blinks now and then, shows a "?" when you stop and it looks around, and a heart when you
+ring the bell while stopped or when it cheers at the finish. After a fall into the water it
+shakes itself dry, and from the third fall on it wears a helmet. Balance-type Friends lean
+against the bicycle's lean to help; Power-type Friends brace themselves on climbs (and sweat on
+the steep one). From your second ride, each new section shows
 how far ahead (green) or behind you are against your best ride this session.
 
 ## Goal
@@ -40,8 +45,8 @@ Times earn a rank: **Bronze** within 3:10, **Silver** within 2:40, **Gold** with
 post yourself. The game cannot open X: the sandbox has no popup or navigation permission, and
 the SDK rules forbid both. If the copy is refused, the text appears in a box to copy by hand.
 
-With reduced motion on, the Friend's entrance, flight, turn and cheering, the close-up, the
-birds and the speed lines are skipped and the Friend simply stays seated.
+With reduced motion on, the Friend's entrance, flight, turn and cheering, its reactions and
+marks, the close-up, the birds and the speed lines are skipped and the Friend simply stays seated.
 
 From the SDK checkout:
 
@@ -106,7 +111,10 @@ edge you are before the fall happens.
 ## Friend
 
 The selected Friend is drawn from the canonical SDK sprite reader at integer scale with
-the usual clipped white halo, unmodified. It mostly uses the `down` frame so it faces the
+the usual clipped white halo. The artwork itself is unchanged except for two small touches:
+the eyes (the small enclosed holes nearest the top of the sprite) close for a blink or grow
+by one pixel when the Friend is startled, and a helmet is drawn over the top of the head after
+three falls. Friends whose sprite has no such holes (Hollow) keep their eyes as drawn. It mostly uses the `down` frame so it faces the
 rider, and the side and `up` frames when it turns to look around or down the road.
 Friends without `up`/`down` frames fall back to the SDK's side-facing frames.
 
@@ -123,7 +131,7 @@ the same way.
 
 Settings include a reduced-motion toggle, which also follows
 `prefers-reduced-motion`. It stops the basket sway, the sprite animation, the Friend's
-entrance, flight, turn and cheering, the close-up after the finish, the speed lines and the birds. It does
+entrance, flight, turn and cheering, its blinking and wide eyes, the close-up after the finish, the speed lines and the birds. It does
 **not** stop the bicycle's low-speed wobble, because that is part of the controls rather
 than decoration. The bottom of the scene is kept clear for the runtime toolbar; the
 clearance is measured in device pixels and recomputed from the canvas's displayed height,
@@ -134,7 +142,12 @@ control pads move up and shrink at phone sizes.
 
 There are five sounds: the brake hiss, the bicycle bell (when you push off and when you
 cross the finish line), a short high beep when you are about to fall, a softer blip when
-your Friend hops for joy and a little wooden knock when you fall. All are synthesized in
+your Friend hops for joy and a little wooden knock when you fall. Instead of background music,
+your Friend hums: once you are riding smoothly above about 12 km/h it hums short phrases
+with pauses in between (small white notes rise beside its head while it does), a livelier,
+higher tune above 30 km/h, and a slow, broken hum on the steep final climb. It falls silent
+when you stop, slow right down, run out of stamina, are about to fall or fall, and each
+Friend's voice is pitched slightly differently. All are synthesized in
 the browser with Web Audio; there are no recordings or third-party audio assets.
 Audio starts only after your first key press or tap. The speaker button at
 the top right and the **Sound** box in Settings mute everything. The game plays normally
@@ -144,7 +157,7 @@ if audio is unavailable.
 
 Progress is local to the session and resets on reload; nothing is written to the Friend.
 
-Riding costs **0 RF** and has no purchases, consumables or rewards. The v0.1.2 runtime
+Riding costs **0 RF** and has no purchases, consumables or rewards. The v0.1.4 runtime
 still requires a chance-game `game.json`, so this game includes **unused schema-only
 terms**: a 1 RF token with a single 100% (10,000 basis points) 1 RF reward, each encoded
 as `1000000000000000000` RF base units. The component never calls `buy`, `play`, `settle`
